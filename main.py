@@ -7,12 +7,17 @@ from adapters.inosmi_ru import sanitize, test_sanitize
 from adapters.exceptions import ArticleNotFound
 from text_tools import split_by_words, calculate_jaundice_rate
 from enum import Enum
+from async_timeout import timeout
+
+
+TIMEOUT=2
 
 
 class ProcessingStatus(Enum):
     OK = 'OK'
     FETCH_ERROR = 'FETCH_ERROR'
     PARSING_ERROR = 'PARSING_ERROR'
+    TIMEOUT = 'TIMEOUT'
 
 
 TEST_ARTICLES = [
@@ -47,15 +52,23 @@ def read_charged_dict_to_list(file_path, words_list):
 
 async def process_article(session, morph, charged_words, url, article_parameters):
     try:
-        html = await fetch(session, url)
-        text = sanitize(html, plaintext=True)
-        text = split_by_words(morph, text)
-        article_rate = calculate_jaundice_rate(text, charged_words)
+        async with timeout(TIMEOUT):
+            html = await fetch(session, url)
+            text = sanitize(html, plaintext=True)
+            text = split_by_words(morph, text)
+            article_rate = calculate_jaundice_rate(text, charged_words)
+            article_params = {
+                'url': url,
+                'status': ProcessingStatus.OK.name,
+                'rate': article_rate,
+                'article_len': len(text)
+            }
+    except asyncio.TimeoutError:
         article_params = {
             'url': url,
-            'status': ProcessingStatus.OK.name,
-            'rate': article_rate,
-            'article_len': len(text)
+            'status': ProcessingStatus.TIMEOUT.name,
+            'rate': None,
+            'article_len': None
         }
     except aiohttp.ClientResponseError:
         article_params = {
