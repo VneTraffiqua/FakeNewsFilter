@@ -34,26 +34,34 @@ def read_charged_dict_to_list(file_path, words_list):
     return words_list
 
 
-async def process_article(session, morph, charged_words, url, title):
-    async with aiohttp.ClientSession() as session:
-        html = await fetch(session, url)
+async def process_article(session, morph, charged_words, url, article_parameters):
+    html = await fetch(session, url)
     text = sanitize(html, plaintext=True)
     text = split_by_words(morph, text)
-    result = calculate_jaundice_rate(text, charged_words)
-    print('Заголовок:', title)
-    print(f'URL: {url}')
-    print(f'Рейтинг: {result}')
-    print(f'Слов в статье: {len(text)}')
+    article_rate = calculate_jaundice_rate(text, charged_words)
+    article_params = {
+        'url': url,
+        'rate': article_rate,
+        'article_len': len(text)
+    }
+    article_parameters.append(article_params)
+    # print('Заголовок:', title)
+    # print(f'URL: {url}')
+    # print(f'Рейтинг: {article_rate}')
+    # print(f'Слов в статье: {len(text)}')
 
 
 
 async def main():
+    article_parameters = []
     negative_words_list = read_charged_dict_to_list('./charged_dict/negative_words.txt', words_list=[])
     morph = pymorphy2.MorphAnalyzer()
-    async with create_task_group() as tg:
-        for url in TEST_ARTICLES:
-                tg.start_soon(process_article, 'session', morph, negative_words_list, url, '')
-
+    async with aiohttp.ClientSession() as session:
+        async with create_task_group() as tg:
+            for url in TEST_ARTICLES:
+                    tg.start_soon(process_article, session, morph, negative_words_list, url, article_parameters)
+    for params in article_parameters:
+        print(params)
 
 if __name__ == '__main__':
     asyncio.run(main())
