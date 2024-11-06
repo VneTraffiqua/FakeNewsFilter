@@ -4,7 +4,15 @@ import aiofiles
 import pymorphy2
 from anyio import sleep, create_task_group, run
 from adapters.inosmi_ru import sanitize, test_sanitize
+from adapters.exceptions import ArticleNotFound
 from text_tools import split_by_words, calculate_jaundice_rate
+from enum import Enum
+
+
+class ProcessingStatus(Enum):
+    OK = 'OK'
+    FETCH_ERROR = 'FETCH_ERROR'
+    PARSING_ERROR = 'PARSING_ERROR'
 
 
 TEST_ARTICLES = [
@@ -12,8 +20,11 @@ TEST_ARTICLES = [
     'https://inosmi.ru/20241105/vybory-270639230.html',
     'https://inosmi.ru/20241106/vybory-270653156.html',
     'https://inosmi.ru/20241106/ekonomika-270651327.html',
-    'https://inosmi.ru/20241106/izrail-270660075.html'
+    'https://inosmi.ru/20241106/izrail-270660075.html',
+    'https://inosmi.ru/not/exist.html',
+    'https://lenta.ru/brief/2021/08/26/afg_terror/'
 ]
+
 
 async def fetch(session, url):
     async with session.get(url) as response:
@@ -35,16 +46,33 @@ def read_charged_dict_to_list(file_path, words_list):
 
 
 async def process_article(session, morph, charged_words, url, article_parameters):
-    html = await fetch(session, url)
-    text = sanitize(html, plaintext=True)
-    text = split_by_words(morph, text)
-    article_rate = calculate_jaundice_rate(text, charged_words)
-    article_params = {
-        'url': url,
-        'rate': article_rate,
-        'article_len': len(text)
-    }
-    article_parameters.append(article_params)
+    try:
+        html = await fetch(session, url)
+        text = sanitize(html, plaintext=True)
+        text = split_by_words(morph, text)
+        article_rate = calculate_jaundice_rate(text, charged_words)
+        article_params = {
+            'url': url,
+            'status': ProcessingStatus.OK.name,
+            'rate': article_rate,
+            'article_len': len(text)
+        }
+    except aiohttp.ClientResponseError:
+        article_params = {
+            'url': url,
+            'status': ProcessingStatus.FETCH_ERROR.name,
+            'rate': None,
+            'article_len': None
+        }
+    except ArticleNotFound:
+        article_params = {
+            'url': url,
+            'status': ProcessingStatus.PARSING_ERROR.name,
+            'rate': None,
+            'article_len': None
+        }
+    finally:
+        article_parameters.append(article_params)
     # print('Заголовок:', title)
     # print(f'URL: {url}')
     # print(f'Рейтинг: {article_rate}')
@@ -62,6 +90,5 @@ async def main():
                     tg.start_soon(process_article, session, morph, negative_words_list, url, article_parameters)
     for params in article_parameters:
         print(params)
-
 if __name__ == '__main__':
     asyncio.run(main())
