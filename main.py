@@ -8,6 +8,8 @@ from adapters.exceptions import ArticleNotFound
 from text_tools import split_by_words, calculate_jaundice_rate
 from enum import Enum
 from async_timeout import timeout
+from contextlib import contextmanager
+import time
 
 
 TIMEOUT=2
@@ -37,11 +39,15 @@ async def fetch(session, url):
         return await response.text()
 
 
-# async def read_charged_dict_to_list(file_path, words_list):
-#     async with aiofiles.open(file_path, mode='r') as file:
-#         async for line in file:
-#             words_list.append(line.strip())
-#     return words_list
+@contextmanager
+def time_execution(article_params):
+    start_time = time.monotonic()
+    try:
+        yield
+    finally:
+        end_time = time.monotonic()
+        elapsed_time = end_time - start_time
+        article_params['time_execution'] = round(elapsed_time, 2)
 
 def read_charged_dict_to_list(file_path, words_list):
     with open(file_path, 'r') as file:
@@ -51,46 +57,30 @@ def read_charged_dict_to_list(file_path, words_list):
 
 
 async def process_article(session, morph, charged_words, url, article_parameters):
+    article_params = {
+        'url': url,
+        'rate': None,
+        'article_len': None
+    }
     try:
-        async with timeout(TIMEOUT):
-            html = await fetch(session, url)
-            text = sanitize(html, plaintext=True)
-            text = split_by_words(morph, text)
-            article_rate = calculate_jaundice_rate(text, charged_words)
-            article_params = {
-                'url': url,
-                'status': ProcessingStatus.OK.name,
-                'rate': article_rate,
-                'article_len': len(text)
-            }
+        with time_execution(article_params):
+            async with timeout(TIMEOUT):
+                html = await fetch(session, url)
+                text = sanitize(html, plaintext=True)
+                text = split_by_words(morph, text)
+                article_rate = calculate_jaundice_rate(text, charged_words)
+                article_params['url'] = url
+                article_params['status'] = ProcessingStatus.OK.name
+                article_params['rate'] = article_rate
+                article_params['article_len'] = len(text)
     except asyncio.TimeoutError:
-        article_params = {
-            'url': url,
-            'status': ProcessingStatus.TIMEOUT.name,
-            'rate': None,
-            'article_len': None
-        }
+        article_params['status'] = ProcessingStatus.TIMEOUT.name
     except aiohttp.ClientResponseError:
-        article_params = {
-            'url': url,
-            'status': ProcessingStatus.FETCH_ERROR.name,
-            'rate': None,
-            'article_len': None
-        }
+        article_params['status'] = ProcessingStatus.FETCH_ERROR.name
     except ArticleNotFound:
-        article_params = {
-            'url': url,
-            'status': ProcessingStatus.PARSING_ERROR.name,
-            'rate': None,
-            'article_len': None
-        }
+        article_params['status'] = ProcessingStatus.PARSING_ERROR.name
     finally:
         article_parameters.append(article_params)
-    # print('Заголовок:', title)
-    # print(f'URL: {url}')
-    # print(f'Рейтинг: {article_rate}')
-    # print(f'Слов в статье: {len(text)}')
-
 
 
 async def main():
