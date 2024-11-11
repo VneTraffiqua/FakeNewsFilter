@@ -8,11 +8,11 @@ from adapters.exceptions import ArticleNotFound
 from text_tools import split_by_words, calculate_jaundice_rate
 from enum import Enum
 from async_timeout import timeout
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 import time
 
 
-TIMEOUT=2
+TIMEOUT=3
 
 
 class ProcessingStatus(Enum):
@@ -29,7 +29,8 @@ TEST_ARTICLES = [
     'https://inosmi.ru/20241106/ekonomika-270651327.html',
     'https://inosmi.ru/20241106/izrail-270660075.html',
     'https://inosmi.ru/not/exist.html',
-    'https://lenta.ru/brief/2021/08/26/afg_terror/'
+    'https://lenta.ru/brief/2021/08/26/afg_terror/',
+    'https://www.gutenberg.org/cache/epub/74696/pg74696-images.html'
 ]
 
 
@@ -38,9 +39,8 @@ async def fetch(session, url):
         response.raise_for_status()
         return await response.text()
 
-
-@contextmanager
-def time_execution(article_params):
+@asynccontextmanager
+async def time_execution(article_params):
     start_time = time.monotonic()
     try:
         yield
@@ -63,7 +63,7 @@ async def process_article(session, morph, charged_words, url, article_parameters
         'article_len': None
     }
     try:
-        with time_execution(article_params):
+        async with time_execution(article_params):
             async with timeout(TIMEOUT):
                 html = await fetch(session, url)
                 text = sanitize(html, plaintext=True)
@@ -93,5 +93,7 @@ async def main():
                     tg.start_soon(process_article, session, morph, negative_words_list, url, article_parameters)
     for params in article_parameters:
         print(params)
+
+
 if __name__ == '__main__':
     asyncio.run(main())
