@@ -1,4 +1,5 @@
 import aiohttp
+from aiohttp import web
 import asyncio
 import aiofiles
 import pymorphy2
@@ -14,25 +15,11 @@ import time
 
 TIMEOUT=3
 
-
 class ProcessingStatus(Enum):
     OK = 'OK'
     FETCH_ERROR = 'FETCH_ERROR'
     PARSING_ERROR = 'PARSING_ERROR'
     TIMEOUT = 'TIMEOUT'
-
-
-TEST_ARTICLES = [
-    'https://inosmi.ru/20241031/tramp-270579213.html',
-    'https://inosmi.ru/20241105/vybory-270639230.html',
-    'https://inosmi.ru/20241106/vybory-270653156.html',
-    'https://inosmi.ru/20241106/ekonomika-270651327.html',
-    'https://inosmi.ru/20241106/izrail-270660075.html',
-    'https://inosmi.ru/not/exist.html',
-    'https://lenta.ru/brief/2021/08/26/afg_terror/',
-    'https://www.gutenberg.org/cache/epub/74696/pg74696-images.html'
-]
-
 
 async def fetch(session, url):
     async with session.get(url) as response:
@@ -54,7 +41,6 @@ def read_charged_dict_to_list(file_path, words_list):
         for line in file:
             words_list.append(line.strip())
     return words_list
-
 
 async def process_article(session, morph, charged_words, url, article_parameters):
     article_params = {
@@ -82,18 +68,21 @@ async def process_article(session, morph, charged_words, url, article_parameters
     finally:
         article_parameters.append(article_params)
 
-
-async def main():
+async def main(request):
+    urls = request.rel_url.query.get("urls", "World")
+    urls = urls.split(',')
     article_parameters = []
     negative_words_list = read_charged_dict_to_list('./charged_dict/negative_words.txt', words_list=[])
     morph = pymorphy2.MorphAnalyzer()
     async with aiohttp.ClientSession() as session:
         async with create_task_group() as tg:
-            for url in TEST_ARTICLES:
-                    tg.start_soon(process_article, session, morph, negative_words_list, url, article_parameters)
+            for url in urls:
+                tg.start_soon(process_article, session, morph, negative_words_list, url, article_parameters)
     for params in article_parameters:
         print(params)
-
+    return web.json_response(article_parameters, content_type='text/plain')
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    app = web.Application()
+    app.add_routes([web.get("/", main)])
+    web.run_app(app)
