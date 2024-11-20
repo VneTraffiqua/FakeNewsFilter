@@ -10,6 +10,7 @@ from enum import Enum
 from async_timeout import timeout
 from contextlib import asynccontextmanager
 import time
+from functools import partial
 
 
 TIMEOUT=3
@@ -72,7 +73,7 @@ async def process_article(morph, charged_words, url, article_parameters):
     finally:
         article_parameters.append(article_params)
 
-async def main(request):
+async def main(request, morph, words_list):
     urls = request.rel_url.query.get('urls')
     urls = urls.split(',')
     if len(urls) > MAX_URLS_IN_REQUEST:
@@ -81,12 +82,10 @@ async def main(request):
             content_type='text/plain'
         )
     article_parameters = []
-    negative_words_list = read_charged_dict_to_list('./charged_dict/negative_words.txt', words_list=[])
-    morph = pymorphy2.MorphAnalyzer()
 
     async with create_task_group() as tg:
         for url in urls:
-            tg.start_soon(process_article, morph, negative_words_list, url, article_parameters)
+            tg.start_soon(process_article, morph, words_list, url, article_parameters)
     for params in article_parameters:
         print(params)
     return web.json_response(article_parameters, content_type='text/plain')
@@ -130,6 +129,8 @@ def test_process_article_with_big_text():
 
 
 if __name__ == '__main__':
+    negative_words_list = read_charged_dict_to_list('./charged_dict/negative_words.txt', words_list=[])
+    morph = pymorphy2.MorphAnalyzer()
     app = web.Application()
-    app.add_routes([web.get("/", main)])
+    app.add_routes([web.get("/", partial(main, morph=morph, words_list=negative_words_list))])
     web.run_app(app)
