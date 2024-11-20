@@ -58,7 +58,7 @@ async def process_article(morph, charged_words, url, article_parameters):
                     async with aiohttp.ClientSession() as session:
                         html = await fetch(session, url)
                         text = sanitize(html, plaintext=True)
-                text = split_by_words(morph, text)
+                text = await split_by_words(morph, text)
                 article_rate = calculate_jaundice_rate(text, charged_words)
                 article_params['url'] = url
                 article_params['status'] = ProcessingStatus.OK.name
