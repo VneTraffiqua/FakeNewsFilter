@@ -72,7 +72,7 @@ http://127.0.0.1:8080/?urls=https://inosmi.ru/20240628/drevnie-lyudi-269349491.h
 Для тестирования используется [pytest](https://docs.pytest.org/en/latest/), тестами покрыты фрагменты кода сложные в отладке: text_tools.py и адаптеры. Команды для запуска тестов:
 
 ```commandline
-python -m pytest server.py 
+python -m pytest tests_process_article.py 
 ```
 
 ```
